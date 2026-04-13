@@ -1,0 +1,258 @@
+--========================================================
+-- 🤖 GEMINI AI V9 FINAL BOSS
+--========================================================
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local TextChatService = game:GetService("TextChatService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+
+local LocalPlayer = Players.LocalPlayer
+local http_request = request or http_request or (http and http.request)
+
+local API_URL = "https://node-js-starter--davilucasalves1.replit.app/api/gemini/ask"
+
+--========================================================
+-- 🧠 SISTEMA
+--========================================================
+
+local Bot = {
+    Ativo = false,
+    Fila = {},
+    Processando = false,
+    Perfis = {},
+    Foco = nil,
+    Cooldown = {}
+}
+
+--========================================================
+-- 🔊 SOM
+--========================================================
+
+local Voz = Instance.new("Sound")
+Voz.SoundId = "rbxassetid://9118828564"
+Voz.Volume = 1
+Voz.Parent = SoundService
+
+--========================================================
+-- 🧠 PERFIL
+--========================================================
+
+local function GetPerfil(p)
+    if not Bot.Perfis[p.UserId] then
+        Bot.Perfis[p.UserId] = {
+            Tolerancia = 100,
+            Memoria = {},
+            Interacoes = 0,
+            Amigo = false,
+            Inimigo = false
+        }
+    end
+    return Bot.Perfis[p.UserId]
+end
+
+local function Normalizar(txt)
+    return txt:lower():gsub("[^%w%s]","")
+end
+
+--========================================================
+-- 👀 OLHAR
+--========================================================
+
+local function Olhar(p)
+    if not p.Character then return end
+    local my = LocalPlayer.Character
+    if not my then return end
+
+    local root = my:FindFirstChild("HumanoidRootPart")
+    local target = p.Character:FindFirstChild("HumanoidRootPart")
+
+    if root and target then
+        root.CFrame = CFrame.lookAt(root.Position, target.Position)
+    end
+end
+
+--========================================================
+-- 💬 CHAT
+--========================================================
+
+function Enviar(msg)
+    msg = string.sub(msg,1,80)
+
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        local ch = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+        if ch then ch:SendAsync(msg) end
+    else
+        ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(msg,"All")
+    end
+end
+
+--========================================================
+-- 🎙️ VOZ
+--========================================================
+
+local function Falar(p,texto)
+    Olhar(p)
+
+    local tempo = math.clamp(#texto * 0.05,1,5)
+
+    Enviar("🔊 ...")
+    Voz:Play()
+
+    task.wait(tempo)
+
+    Voz:Stop()
+    Enviar(texto)
+end
+
+--========================================================
+-- 🧠 IA
+--========================================================
+
+local function Perguntar(p,msg)
+    local perfil = GetPerfil(p)
+
+    table.insert(perfil.Memoria, msg)
+    if #perfil.Memoria > 6 then table.remove(perfil.Memoria,1) end
+
+    local contexto = table.concat(perfil.Memoria," | ")
+
+    local humor = "Seja neutro."
+
+    if perfil.Amigo then
+        humor = "Seja amigável."
+    elseif perfil.Inimigo then
+        humor = "Seja seco."
+    elseif perfil.Tolerancia < 30 then
+        humor = "Seja irritado."
+    end
+
+    local ok,res = pcall(function()
+        return http_request({
+            Url = API_URL,
+            Method = "POST",
+            Headers = {["Content-Type"]="application/json"},
+            Body = HttpService:JSONEncode({
+                prompt = humor.." Jogador:"..p.Name.." "..contexto
+            })
+        })
+    end)
+
+    if ok and res and res.StatusCode == 200 then
+        local data = HttpService:JSONDecode(res.Body)
+        return data.response or "..."
+    end
+
+    return "Erro"
+end
+
+--========================================================
+-- 🚀 PROCESSAMENTO
+--========================================================
+
+local function Processar()
+    if Bot.Processando then return end
+    Bot.Processando = true
+
+    task.spawn(function()
+        while #Bot.Fila > 0 do
+
+            local item = table.remove(Bot.Fila,1)
+            local p = item.Player
+            local msg = item.Msg
+
+            local perfil = GetPerfil(p)
+
+            -- anti spam
+            if Bot.Cooldown[p.UserId] then continue end
+            Bot.Cooldown[p.UserId] = true
+
+            task.delay(2,function()
+                Bot.Cooldown[p.UserId] = nil
+            end)
+
+            -- foco
+            Bot.Foco = p
+
+            -- detectar comportamento
+            local limpa = Normalizar(msg)
+
+            if limpa:find("burro") or limpa:find("idiota") then
+                perfil.Tolerancia -= 10
+            end
+
+            if limpa:find("obrigado") or limpa:find("valeu") then
+                perfil.Amigo = true
+            end
+
+            if perfil.Tolerancia <= 0 then
+                perfil.Inimigo = true
+                continue
+            end
+
+            perfil.Interacoes += 1
+
+            local resposta = Perguntar(p,msg)
+
+            if resposta then
+                Falar(p,resposta)
+            end
+
+            task.wait(2)
+        end
+
+        Bot.Processando = false
+    end)
+end
+
+--========================================================
+-- 🔗 CHAT
+--========================================================
+
+local function OnChat(p,msg)
+    if not Bot.Ativo or p == LocalPlayer then return end
+
+    local perfil = GetPerfil(p)
+
+    if perfil.Inimigo then return end
+
+    if msg:lower():find("bot") then
+        table.insert(Bot.Fila, {Player=p,Msg=msg})
+        Processar()
+    end
+end
+
+for _,p in ipairs(Players:GetPlayers()) do
+    p.Chatted:Connect(function(m) OnChat(p,m) end)
+end
+
+Players.PlayerAdded:Connect(function(p)
+    p.Chatted:Connect(function(m) OnChat(p,m) end)
+end)
+
+--========================================================
+-- 🎨 UI
+--========================================================
+
+local Window = Rayfield:CreateWindow({
+    Name = "Gemini V9 FINAL BOSS",
+    LoadingTitle = "Modo Supremo Máximo",
+    ConfigurationSaving = {Enabled = false}
+})
+
+local Tab = Window:CreateTab("Sistema")
+
+Tab:CreateToggle({
+    Name = "Ativar Bot",
+    CurrentValue = false,
+    Callback = function(v) Bot.Ativo = v end
+})
+
+Rayfield:Notify({
+    Title="V9 FINAL BOSS",
+    Content="IA completa ativada",
+    Duration=6
+})
