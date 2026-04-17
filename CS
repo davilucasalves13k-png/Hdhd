@@ -1,0 +1,18 @@
+[
+  {
+    "Nome": "Infinite Yield",
+    "Categoria": "Admin",
+    "Desc": "Comandos admin completos",
+    "Data": "2023",
+    "Usos": 99999,
+    "Link": "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"
+  },
+  {
+    "Nome": "Rael Hub",
+    "Categoria": "Hub",
+    "Desc": "Hub universal com várias funções",
+    "Data": "2024",
+    "Usos": 8000,
+    "Link": "https://rawscripts.net/raw/Universal-Script-Rael-Hub-27610"
+  }
+]
